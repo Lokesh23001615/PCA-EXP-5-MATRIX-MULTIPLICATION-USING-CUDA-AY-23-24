@@ -66,12 +66,15 @@ __global__ void matrixMultiply(int *a, int *b, int *c, int size)
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-    int sum = 0;
-    for (int k = 0; k < size; ++k)
+    if (row < size && col < size)
     {
-        sum += a[row * size + k] * b[k * size + col];
+        int sum = 0;
+        for (int k = 0; k < size; ++k)
+        {
+            sum += a[row * size + k] * b[k * size + col];
+        }
+        c[row * size + col] = sum;
     }
-    c[row * size + col] = sum;
 }
 
 int main()
@@ -103,20 +106,33 @@ int main()
     dim3 dimGrid((SIZE + BLOCK_SIZE - 1) / BLOCK_SIZE, (SIZE + BLOCK_SIZE - 1) / BLOCK_SIZE);
     dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
 
-    // Start timer
-    double start = seconds();
+    // Host-side timer (wall-clock)
+    double host_start = seconds();
+
+    // Device-side timing using CUDA events
+    cudaEvent_t start, stop;
+    float device_elapsed = 0.0f;
+    CHECK(cudaEventCreate(&start));
+    CHECK(cudaEventCreate(&stop));
+
+    CHECK(cudaEventRecord(start, 0));
 
     // Launch kernel
     matrixMultiply<<<dimGrid, dimBlock>>>(dev_a, dev_b, dev_c, SIZE);
 
+    CHECK(cudaEventRecord(stop, 0));
+    CHECK(cudaEventSynchronize(stop));
+
     // Wait for GPU to finish before accessing on host
     CHECK(cudaDeviceSynchronize());
+
+    double host_end = seconds();  // Host end time
 
     // Copy result matrix from device to host memory
     CHECK(cudaMemcpy(c, dev_c, size, cudaMemcpyDeviceToHost));
 
-    // Stop timer
-    double end = seconds();
+    // Calculate and print device-side elapsed time
+    CHECK(cudaEventElapsedTime(&device_elapsed, start, stop));
 
     // Print the result matrix
     printf("Result Matrix:\n");
@@ -129,21 +145,26 @@ int main()
         printf("\n");
     }
 
-    // Print the elapsed time
-    printf("Elapsed Time: %.6f seconds\n", end - start);
+    // Print elapsed times
+    printf("\nHost Elapsed Time: %.6f seconds\n", host_end - host_start);
+    printf("Device (Kernel) Execution Time: %.3f ms\n", device_elapsed);
 
-    // Free device memory
-    cudaFree(dev_a);
-    cudaFree(dev_b);
-    cudaFree(dev_c);
+    // Free device memory and destroy events
+    CHECK(cudaFree(dev_a));
+    CHECK(cudaFree(dev_b));
+    CHECK(cudaFree(dev_c));
+    CHECK(cudaEventDestroy(start));
+    CHECK(cudaEventDestroy(stop));
 
     return 0;
 }
+
 ```
 
 ## OUTPUT:
-![image](https://github.com/user-attachments/assets/61415e79-8b54-47f0-a8db-0f9264e77665)
+![image](https://github.com/user-attachments/assets/4af182e2-a5b9-4763-84f4-89e84c913dd7)
+
 
 
 ## RESULT:
-Thus the program has been executed by using CUDA to mulptiply two matrices. It is observed that there are variations in host and device elapsed time. Device took ______________time and host took ___________time.
+Thus the program has been executed by using CUDA to mulptiply two matrices. It is observed that there are variations in host and device elapsed time. Device took 1079.390 ms time and host took 1.087877 seconds time.
